@@ -7,6 +7,7 @@ struct node {
     bool visited;
     uint64_t edges[8];
     int64_t cost; 
+    node *parent;
 };
 
 node *createNode(uint32_t y, uint32_t x, uint32_t seed) {
@@ -16,10 +17,10 @@ node *createNode(uint32_t y, uint32_t x, uint32_t seed) {
         n->y = y;
         n->cost = INF;
         n->visited = false;
+        n->parent = NULL;
         srandom(seed);
         for (int pos = 0; pos < 8; pos++) {
-            n->edges[pos] = random() & 0x0000FF;
-            n->edges[pos] = 1;
+            n->edges[pos] = random() & 0x00000F;
         }
     }
     return n;
@@ -44,6 +45,15 @@ int64_t getEdge(node *n, int8_t position) {
     } else {
         return -1;
     }
+}
+
+void addParent(node *n, node *parent) {
+    n->parent = parent;
+    return;
+}
+
+node *getParent(node *n) {
+    return n->parent;
 }
 
 int32_t getX(node *n) {

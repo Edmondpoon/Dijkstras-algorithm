@@ -16,6 +16,10 @@ void addEdge(node *n, uint8_t position, int64_t weight);
 
 int64_t getEdge(node *n, int8_t position);
 
+void addParent(node *n, node *parent);
+
+node *getParent(node *n);
+
 int32_t getX(node *n);
 
 int32_t getY(node *n);
