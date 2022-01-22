@@ -1,6 +1,6 @@
-CC = gcc
+CC = clang
 CFLAGS = -Wall -Wpedantic -Wextra -Werror
-OBJS = dijkstra.o node.o
+OBJS = dijkstra.o node.o List.o
 
 .PHONY: all clean
 

@@ -5,11 +5,24 @@
 
 #define OPTIONS "hd:i:o:s:"
 #define ABS(x) (x > 0 ? x : -x)
+
 bool valid_input(char *optarg, uint32_t *variable);
 void help_message(char *error);
-uint8_t position(uint32_t sX, uint32_t sY, uint32_t eX, uint32_t eY );
+int8_t findPosition(int8_t deltaX, int8_t deltaY);
+bool inRange(uint32_t dim, uint32_t x, uint32_t y);
 
 enum Files { INFILE, OUTFILE };
+enum Positions {
+    TOP_LEFT,
+    UP,
+    TOP_RIGHT,
+    LEFT,
+    RIGHT,
+    BOT_LEFT,
+    DOWN,
+    BOT_RIGHT,
+};
+
 
 int main(int argc, char **argv) {
     int8_t opt = 0;
@@ -50,27 +63,122 @@ int main(int argc, char **argv) {
         }
     }
    
+    int8_t position;
     char buffer[4096]; 
     uint32_t soX, soY, destX, destY ; // Source and Destination //TODO
     uint8_t validMarkers = 0;
     uint32_t sourceX, sourceY, endX, endY;
-    int64_t cost = 0;
+    int64_t weight = 0;
     while (fgets(buffer, 4096, files[INFILE]) != NULL) {
+        // TODO to ensure start/end nodes are valid
         if (validMarkers == 0) {
             sscanf(buffer, "%" SCNu32" %" SCNu32 "\n", &soX, &soY);
+            validMarkers += 1;
         } else if (validMarkers == 1) {
             sscanf(buffer, "%" SCNu32" %" SCNu32 "\n", &destX, &destY);
+            validMarkers += 1;
         } else {
-            sscanf(buffer, "%" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNd64 "\n", &sourceX, &sourceY, &endX, &endY, &cost);
-            addEdge(board[sourceY][sourceX], position(sourceX, sourceY, endX, endY), cost > 0 ? cost : BLOCKED);
+            sscanf(buffer, "%" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNd64 "\n", &sourceX, &sourceY, &endX, &endY, &weight);
+            position = findPosition(sourceX - endX, sourceY - endY);
+            if (position > 0) {
+                addEdge(board[sourceY][sourceX], position, weight > 0 ? weight : BLOCKED);
+            }
         }
     }
     
-    updateCost(board[soX][soY], 0); 
-    
+    node *next, *current = board[soY][soX], *destination = board[destY][destX], *min;
+    updateCost(current, 0); 
     // TODO print path and entire board once either no path or found path (make path module)
-    while () 
+    while (!visited(destination)) {
+        printf("---------------------\n");
+        printf("X, y: %" PRIu32 "%" PRIu32 "\n", getX(current), getY(current));
+        for (int x = -1; x < 2; x++) {
+            for (int y = -1; y < 2; y++) {
+                if (inRange(dimension, getX(current) + x, getY(current) + y)) {
+                    printf("x = %d y = %d inRange\n", x, y);
+                    next = board[getY(current) + y][getX(current) + x];
+                    weight = getEdge(current, findPosition(x, y));
+                    printf("weight = %"PRId64"\n", weight);
+                    if (!visited(next) && weight >= 0 && (cost(next) > weight + cost(current) || cost(next) == INF)) {
+                        printf("check allowed\n");
+                        printf("looking at node X = %"PRIu32 " Y = %"PRIu32"\n", getX(next), getY(next));
+                        printf("minimum node X = %"PRIu32 " Y = %"PRIu32"\n", getX(min), getY(min));
+                        printf("old cost = %" PRId64 "\n", cost(next));
+                        updateCost(next, weight + cost(current));
+                        printf("old cost = %" PRId64 "\n", cost(next));
+                    }
+                }
+            }
+        }
+        visit(current);
+        printf("visited %" PRIu32 " %" PRIu32 "\n", getX(current), getY(current));
+        // no possible next nodes
 
+        min = NULL;
+        current = NULL;
+        for (uint32_t row = 0; row < dimension; row++) {
+            for (uint32_t col = 0; col < dimension; col++) {
+                min = board[row][col];
+                if (cost(min) < 0 || visited(min)) {
+                    continue;
+                } else if (!current || cost(current) > cost(min)) {
+                    current = min;
+                }
+            }
+        }
+        if (!current) {
+            break;
+        }
+        printf("new current: %" PRIu32 " %" PRIu32"\n", getX(current), getY(current));
+    } 
+    /*
+    while (!visited(destination)) {
+        min = NULL;
+        for (int x = -1; x < 2; x++) {
+            for (int y = -1; y < 2; y++) {
+                int posX = getX(current) + x, posY = getY(current) + y;
+                if (inRange(dimension, posX, posY)) {
+                    next = board[posY][posX];
+                    weight = getEdge(current, findPosition(x, y));
+                    if (!visited(next) && weight > 0) {
+                        int newCost = cost(current) + weight;
+                        if (cost(next) < 0 || newCost < cost(next)) {
+                            updateCost(next, newCost);
+                        } 
+                        if (!min || cost(min) > newCost) {
+                            min = next;
+                        }
+                    }
+                }
+            }
+        }
+        visit(current);
+        printf("visited %" PRIu32 " %" PRIu32 "\n", getX(current), getY(current));
+        // no possible next nodes
+        if (!min) {
+            printf("broke out of loop\n");
+            break;
+        } else {
+            current = min;
+            printf("new current: %" PRIu32 " %" PRIu32"\n", getX(current), getY(current));
+        }
+    }
+    */
+    int64_t temp = 0; //TODO
+    for (uint32_t row = 0; row < dimension; row++) {
+        for (uint32_t col = 0; col < dimension; col++) {
+            temp = cost(board[row][col]);
+            if (temp < 0) {
+                printf(" *** ");
+            } else {
+                printf("%4" PRId64 " ", cost(board[row][col]));
+            }
+
+        }
+        printf("\n");
+    }
+    
+    printf("%" PRId64"\n", cost(destination));
 
     return EXIT_SUCCESS;
 }
@@ -106,25 +214,30 @@ bool valid_input(char *optarg, uint32_t *variable) {
     return true;
 }
 
-uint8_t position(uint32_t sX, uint32_t sY, uint32_t eX, uint32_t eY ) {
-    int8_t deltaX = eX - sX, deltaY = eY - sY;
+int8_t findPosition(int8_t deltaX, int8_t deltaY) {
     int8_t sum = deltaX + deltaY; 
-    uint8_t position;
+    int8_t position = -1;
     switch (ABS(sum)) {
     case 0:
-        position = deltaX > 0 ? 2 : 5; // top right or bottom left
+        if (deltaX != 0) {
+            position = deltaX > 0 ? TOP_RIGHT : BOT_LEFT; // top right or bottom left
+        }
         break;
     case 2:
-        position = deltaX > 0 ? 7 : 0; // top left or bottom right
+        position = deltaX > 0 ? BOT_RIGHT : TOP_LEFT; // top left or bottom right
         break;
-    case 4:
+    case 1:
         if (deltaX == 0) { 
-            position = deltaY > 0 ? 6 : 1; // down or up
+            position = deltaY > 0 ? DOWN : UP; // down or up
         } else {
-            position = deltaX > 0 ? 4 : 3; // right ot left
+            position = deltaX > 0 ? RIGHT : LEFT; // right ot left
         }
         break;
     default:;
     }
     return position;
+}
+
+bool inRange(uint32_t dim, uint32_t x, uint32_t y) {
+    return (x >= 0 && x < dim && y < dim && y >= 0);
 }

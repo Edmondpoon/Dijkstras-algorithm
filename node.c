@@ -6,21 +6,10 @@ struct node {
     uint32_t y;
     bool visited;
     uint64_t edges[8];
-    int32_t cost;
+    int64_t cost; 
 };
 
-enum Positions {
-    TOP_LEFT,
-    UP,
-    TOP_RIGHT,
-    LEFT,
-    RIGHT,
-    BOT_LEFT,
-    DOWN,
-    BOT_RIGHT,
-};
-
-node *createNode(uint32_t x, uint32_t y, uint32_t seed) {
+node *createNode(uint32_t y, uint32_t x, uint32_t seed) {
     node *n = (node *) calloc(1, sizeof(node));
     if (n) {
         n->x = x;
@@ -29,7 +18,8 @@ node *createNode(uint32_t x, uint32_t y, uint32_t seed) {
         n->visited = false;
         srandom(seed);
         for (int pos = 0; pos < 8; pos++) {
-            n->edges[pos] = random();
+            n->edges[pos] = random() & 0x0000FF;
+            n->edges[pos] = 1;
         }
     }
     return n;
@@ -43,13 +33,17 @@ void freeNode(node **n) {
     return;
 }
 
-void addEdge(node *n, uint8_t position, int64_t cost) {
-    n->edges[position] = cost;
+void addEdge(node *n, uint8_t position, int64_t weight) {
+    n->edges[position] = weight;
     return;
 }
 
-int64_t getEdge(node *n, uint8_t position) {
-    return n->edges[position];
+int64_t getEdge(node *n, int8_t position) {
+    if (position > -1 && n->edges[position] > 0 && !n->visited) {
+        return n->edges[position];
+    } else {
+        return -1;
+    }
 }
 
 int32_t getX(node *n) {
@@ -64,11 +58,16 @@ bool visited(node *n) {
     return n->visited;
 }
 
-int32_t cost(node *n) {
+void visit(node *n) {
+    n->visited = true;
+    return;
+}
+
+int64_t cost(node *n) {
     return n->cost;
 }
 
-void updateCost(node *n, int32_t update) {
+void updateCost(node *n, int64_t update) {
     n->cost = update;
     return;
 }
