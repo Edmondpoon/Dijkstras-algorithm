@@ -68,19 +68,16 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
     }
-
     // create the board
     node ***board = (node ***) calloc(dimension, sizeof(node **));
     for (uint32_t index = 0; index < dimension; index++) {
         board[index] = (node **) calloc(dimension, sizeof(node *));
     }
-    //node *board[dimension][dimension];
     for (uint32_t row = 0; row < dimension; row++) {
         for (uint32_t col = 0; col < dimension; col++) {
             board[row][col] = create_node(row, col, seed); 
         }
     }
-
     node *source = NULL, *destination = NULL; 
     char buffer[4096]; 
     while (fgets(buffer, 4096, files[INFILE]) != NULL) {
@@ -95,7 +92,7 @@ int main(int argc, char **argv) {
     node *next, *current = source;
     update_cost(current, 0); 
     int64_t weight = 0;
-    while (!visited(destination)) {
+    while (!visited(destination) && current) {
         for (int x = -1; x < 2; x++) {
             for (int y = -1; y < 2; y++) {
                 if (in_range(dimension, get_X(current) + x, get_Y(current) + y)) {
@@ -120,11 +117,7 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        if (!current) {
-            break;
-        }
     } 
-    
     if (costs) {
         int64_t temp = 0;
         for (uint32_t row = 0; row < dimension; row++) {
@@ -140,13 +133,14 @@ int main(int argc, char **argv) {
             printf("\n");
         }
     }
-    
     print_path(files[OUTFILE], destination, source);
-
     printf("%" PRId64"\n", cost(destination));
     return EXIT_SUCCESS;
 }
 
+// 
+// Prints the usage message
+//
 void help_message(void) {
     printf("SYNOPSIS\n"
             " An implementation of Dijkstra's Algorithm on any given graph.\n"
@@ -163,7 +157,12 @@ void help_message(void) {
     return;
 }
 
-
+//
+// Checks if the argument for a flag was valid
+//
+// optarg: the argument for the flag
+// variable: the variable to store the valid argument in
+//
 bool valid_input(char *optarg, uint32_t *variable) {
     // if the argument for this flag contains a character or is less than 0, print the help message
     char *invalid;
@@ -176,6 +175,12 @@ bool valid_input(char *optarg, uint32_t *variable) {
     return true;
 }
 
+// 
+// Finds the corresponding position for an end node
+//
+// deltaX: the difference between the two nodes' x-values
+// deltaY: the difference between the two nodes' y-values
+//
 int8_t find_position(int8_t deltaX, int8_t deltaY) {
     int8_t sum = deltaX + deltaY; 
     int8_t position = -1;
@@ -200,22 +205,40 @@ int8_t find_position(int8_t deltaX, int8_t deltaY) {
     return position;
 }
 
+//
+// Determines whether an x/y position is in range
+//
+// dim: the dimensions of the graph
+// x: the x position
+// y: the y position
+//
 bool in_range(uint32_t dim, uint32_t x, uint32_t y) {
     return (x >= 0 && x < dim && y < dim && y >= 0);
 }
 
+//
+// Frees memory associated with the FILE pointers
+//
+// files: an array of FILE pointers
+//
 void free_files(FILE *files[2]) {
     if (files[INFILE]) {
-        free(files[INFILE]);
+        fclose(files[INFILE]);
         files[INFILE] = NULL;
     }
     if (files[OUTFILE]) {
-        free(files[OUTFILE]);
+        fclose(files[OUTFILE]);
         files[OUTFILE] = NULL;
     }
     return;
 }
 
+//
+// Reads a node/edge from an instream
+//
+// board: a NxN atrix representing the graph
+// buffer: a buffer containing a string from an instream
+// edge: wheter the item read is an edge or node
 node *scan_nodes(node ***board, char *buffer, bool edge) {
     static uint64_t lineNum = 0;
     uint32_t startX, startY, endX, endY;
@@ -239,6 +262,13 @@ node *scan_nodes(node ***board, char *buffer, bool edge) {
     return updatedNode;
 }
 
+//
+// Prints the shortest path if one was found
+//
+// outfile: the file to print the path to
+// current: the current node we're printing
+// source: the source node
+//
 void print_path(FILE *outfile, node *current, node *source) {
     if (cost(current) < 0) {
         printf("There is no path from source node (%" PRIu32 ", %" PRIu32 ") and destination node (%" PRIu32 ", %" PRIu32 ".\n", 
