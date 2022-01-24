@@ -3,15 +3,18 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#define OPTIONS "hd:i:o:s:"
+#define OPTIONS "chfd:i:o:s:"
 #define ABS(x) (x > 0 ? x : -x)
 
 bool valid_input(char *optarg, uint32_t *variable);
-void help_message(char *error);
-int8_t findPosition(int8_t deltaX, int8_t deltaY);
-bool inRange(uint32_t dim, uint32_t x, uint32_t y);
+void help_message(void);
+void free_files(FILE *files[2]);
+node *scan_nodes(node ***board, char *buffer, bool edge);
+int8_t find_position(int8_t deltaX, int8_t deltaY);
+bool in_range(uint32_t dim, uint32_t x, uint32_t y);
+void print_path(FILE *outfile, node *current, node *source);
 
-enum Files { INFILE, OUTFILE };
+enum FilePointers { INFILE, OUTFILE };
 enum Positions {
     TOP_LEFT,
     UP,
@@ -23,8 +26,8 @@ enum Positions {
     BOT_RIGHT,
 };
 
-
 int main(int argc, char **argv) {
+    bool costs = false;
     int8_t opt = 0;
     uint32_t dimension = 12, seed = 1337;
     FILE *files[2] = { stdin, stdout };
@@ -33,171 +36,130 @@ int main(int argc, char **argv) {
         case 'd': // dimensions
             valid_input(optarg, &dimension);
             break;
+        case 'f': // fixed edge weights
+            seed = -1;
+            break;
+        case 'c': // print final node costs
+            costs = true;
+            break;
         case 's': // random seed
             valid_input(optarg, &seed);
             break;
         case 'i': // infile
             files[INFILE] = fopen(optarg, "r");
             if (!files[INFILE]) {
-                ;//TODO error
+                free_files(files);
+                fprintf(stderr, "Unable to open the file to read from.\n");
+                return EXIT_FAILURE;
             }
             break;
         case 'o': // outfile
             files[OUTFILE] = fopen(optarg, "w");
             if (!files[OUTFILE]) {
-                ;//TODO error
+                free_files(files);
+                fprintf(stderr, "Unable to open the file to write to.\n");
+                return EXIT_FAILURE;
             }
             break;
         case 'h': // help
-            break;
+            help_message();
+            return EXIT_SUCCESS;
         default:
-            return 1;
+            return EXIT_FAILURE;
         }
     }
 
     // create the board
-    node *board[dimension][dimension];
+    node ***board = (node ***) calloc(dimension, sizeof(node **));
+    for (uint32_t index = 0; index < dimension; index++) {
+        board[index] = (node **) calloc(dimension, sizeof(node *));
+    }
+    //node *board[dimension][dimension];
     for (uint32_t row = 0; row < dimension; row++) {
         for (uint32_t col = 0; col < dimension; col++) {
-           board[row][col] = createNode(row, col, seed); 
+            board[row][col] = create_node(row, col, seed); 
         }
     }
-   
-    int8_t position;
+
+    node *source = NULL, *destination = NULL; 
     char buffer[4096]; 
-    uint32_t soX, soY, destX, destY ; // Source and Destination //TODO
-    uint8_t validMarkers = 0;
-    uint32_t sourceX, sourceY, endX, endY;
-    int64_t weight = 0;
     while (fgets(buffer, 4096, files[INFILE]) != NULL) {
-        // TODO to ensure start/end nodes are valid
-        if (validMarkers == 0) {
-            sscanf(buffer, "%" SCNu32" %" SCNu32 "\n", &soX, &soY);
-            validMarkers += 1;
-        } else if (validMarkers == 1) {
-            sscanf(buffer, "%" SCNu32" %" SCNu32 "\n", &destX, &destY);
-            validMarkers += 1;
+        if (!source) {
+            source = scan_nodes(board, buffer, false);
+        } else if (!destination) {
+            destination = scan_nodes(board, buffer, false);
         } else {
-            sscanf(buffer, "%" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNd64 "\n", &sourceX, &sourceY, &endX, &endY, &weight);
-            position = findPosition(sourceX - endX, sourceY - endY);
-            if (position > 0) {
-                addEdge(board[sourceY][sourceX], position, weight > 0 ? weight : BLOCKED);
-            }
+            scan_nodes(board, buffer, true);
         }
     }
-    
-    node *next, *current = board[soY][soX], *destination = board[destY][destX], *min;
-    updateCost(current, 0); 
-    // TODO print path and entire board once either no path or found path (make path module)
+    node *next, *current = source;
+    update_cost(current, 0); 
+    int64_t weight = 0;
     while (!visited(destination)) {
-        printf("---------------------\n");
-        printf("X, y: %" PRIu32 "%" PRIu32 "\n", getX(current), getY(current));
         for (int x = -1; x < 2; x++) {
             for (int y = -1; y < 2; y++) {
-                if (inRange(dimension, getX(current) + x, getY(current) + y)) {
-                    printf("x = %d y = %d inRange\n", x, y);
-                    next = board[getY(current) + y][getX(current) + x];
-                    weight = getEdge(current, findPosition(x, y));
-                    printf("weight = %"PRId64"\n", weight);
+                if (in_range(dimension, get_X(current) + x, get_Y(current) + y)) {
+                    next = board[get_Y(current) + y][get_X(current) + x];
+                    weight = get_edge(current, find_position(x, y));
                     if (!visited(next) && weight >= 0 && (cost(next) > weight + cost(current) || cost(next) == INF)) {
-                        printf("check allowed\n");
-                        printf("looking at node X = %"PRIu32 " Y = %"PRIu32"\n", getX(next), getY(next));
-                        printf("minimum node X = %"PRIu32 " Y = %"PRIu32"\n", getX(min), getY(min));
-                        printf("old cost = %" PRId64 "\n", cost(next));
-                        updateCost(next, weight + cost(current));
-                        printf("old cost = %" PRId64 "\n", cost(next));
+                        update_cost(next, weight + cost(current));
+                        add_parent(next, current);
                     }
                 }
             }
         }
         visit(current);
-        printf("visited %" PRIu32 " %" PRIu32 "\n", getX(current), getY(current));
-        // no possible next nodes
-
-        min = NULL;
         current = NULL;
         for (uint32_t row = 0; row < dimension; row++) {
             for (uint32_t col = 0; col < dimension; col++) {
-                min = board[row][col];
-                if (cost(min) < 0 || visited(min)) {
+                next = board[row][col];
+                if (cost(next) < 0 || visited(next)) {
                     continue;
-                } else if (!current || cost(current) > cost(min)) {
-                    current = min;
+                } else if (!current || cost(current) > cost(next)) {
+                    current = next;
                 }
             }
         }
         if (!current) {
             break;
         }
-        printf("new current: %" PRIu32 " %" PRIu32"\n", getX(current), getY(current));
     } 
-    /*
-    while (!visited(destination)) {
-        min = NULL;
-        for (int x = -1; x < 2; x++) {
-            for (int y = -1; y < 2; y++) {
-                int posX = getX(current) + x, posY = getY(current) + y;
-                if (inRange(dimension, posX, posY)) {
-                    next = board[posY][posX];
-                    weight = getEdge(current, findPosition(x, y));
-                    if (!visited(next) && weight > 0) {
-                        int newCost = cost(current) + weight;
-                        if (cost(next) < 0 || newCost < cost(next)) {
-                            updateCost(next, newCost);
-                        } 
-                        if (!min || cost(min) > newCost) {
-                            min = next;
-                        }
-                    }
+    
+    if (costs) {
+        int64_t temp = 0;
+        for (uint32_t row = 0; row < dimension; row++) {
+            for (uint32_t col = 0; col < dimension; col++) {
+                temp = cost(board[row][col]);
+                if (temp < 0) {
+                    // Blocked position
+                    fprintf(files[OUTFILE], " *** ");
+                } else {
+                    fprintf(files[OUTFILE], "%4" PRId64 " ", cost(board[row][col]));
                 }
             }
+            printf("\n");
         }
-        visit(current);
-        printf("visited %" PRIu32 " %" PRIu32 "\n", getX(current), getY(current));
-        // no possible next nodes
-        if (!min) {
-            printf("broke out of loop\n");
-            break;
-        } else {
-            current = min;
-            printf("new current: %" PRIu32 " %" PRIu32"\n", getX(current), getY(current));
-        }
-    }
-    */
-    int64_t temp = 0; //TODO
-    for (uint32_t row = 0; row < dimension; row++) {
-        for (uint32_t col = 0; col < dimension; col++) {
-            temp = cost(board[row][col]);
-            if (temp < 0) {
-                printf(" *** ");
-            } else {
-                printf("%4" PRId64 " ", cost(board[row][col]));
-            }
-
-        }
-        printf("\n");
     }
     
-    printf("%" PRId64"\n", cost(destination));
+    print_path(files[OUTFILE], destination, source);
 
+    printf("%" PRId64"\n", cost(destination));
     return EXIT_SUCCESS;
 }
 
-void help_message(char *error) {
-    if (*error != '\0') {
-        fprintf(stderr, "%s", error);
-    }
-    fprintf(stderr, "SYNOPSIS\n"
-                    "  A word filtering program for the GPRSC.\n"
-                    "  Filters out and reports bad words parsed from stdin.\n\n"
-                    "USAGE\n"
-                    "  ./banhammer [-hs] [-t size] [-f size]\n\n"
-                    "OPTIONS\n"
-                    "  -h           Program usage and help.\n"
-                    "  -s           Print program statistics.\n"
-                    "  -t size      Specify hash table size (default: 2^16).\n"
-                    " other not specified edges will have random weight"
-                    "  -f size      Specify Bloom filter size (default: 2^20).\n");
+void help_message(void) {
+    printf("SYNOPSIS\n"
+            " An implementation of Dijkstra's Algorithm on any given graph.\n"
+            "USAGE\n"
+            "  ./dijkstra [-hf] [-d dimension] [-i infile] [-o outfile] [-s seed]\n\n"
+            "OPTIONS\n"
+            "  -h           Program usage and help.\n"
+            "  -c           Prints the final costs of each node after the algorithm finishes.\n" 
+            "  -f           Sets the edges between all nodes to 1 (default: random between 1 - 15).\n" 
+            "  -d dimension Sets the dimension of the NxN matrix (default: 12).\n"
+            "  -i infile    The file to read the edges and points from (default: stdin).\n"
+            "  -o outfile   The outfile to write the shortest path to (default: stdout).\n"
+            "  -s seed      Sets the seed used to generate the random edge weights (default: 1337).\n");
     return;
 }
 
@@ -207,14 +169,14 @@ bool valid_input(char *optarg, uint32_t *variable) {
     char *invalid;
     int64_t temp_input = strtoul(optarg, &invalid, 10);
     if ((invalid != NULL && *invalid != '\0') || temp_input < 0) {
-        help_message("Invalid argument for specified flag.\n");
+        fprintf(stderr, "Invalid argument for specified flag.\n");
         return false;
     }
     *variable = (uint32_t) temp_input;
     return true;
 }
 
-int8_t findPosition(int8_t deltaX, int8_t deltaY) {
+int8_t find_position(int8_t deltaX, int8_t deltaY) {
     int8_t sum = deltaX + deltaY; 
     int8_t position = -1;
     switch (ABS(sum)) {
@@ -238,6 +200,54 @@ int8_t findPosition(int8_t deltaX, int8_t deltaY) {
     return position;
 }
 
-bool inRange(uint32_t dim, uint32_t x, uint32_t y) {
+bool in_range(uint32_t dim, uint32_t x, uint32_t y) {
     return (x >= 0 && x < dim && y < dim && y >= 0);
+}
+
+void free_files(FILE *files[2]) {
+    if (files[INFILE]) {
+        free(files[INFILE]);
+        files[INFILE] = NULL;
+    }
+    if (files[OUTFILE]) {
+        free(files[OUTFILE]);
+        files[OUTFILE] = NULL;
+    }
+    return;
+}
+
+node *scan_nodes(node ***board, char *buffer, bool edge) {
+    static uint64_t lineNum = 0;
+    uint32_t startX, startY, endX, endY;
+    int64_t weight = 0;
+    int8_t position, scanned;
+    if (edge) {
+        scanned = sscanf(buffer, "%" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNu32 " %" SCNd64 "\n", &startX, &startY, &endX, &endY, &weight);
+        position = find_position(startX - endX, startY - endY);
+        if (position > 0) {
+            add_edge(board[startY][startX], position, weight > 0 ? weight : BLOCKED);
+        }
+    } else {
+        scanned = sscanf(buffer, "%" SCNu32" %" SCNu32 "\n", &startX, &startY);
+    }
+    lineNum += 1;
+    node *updatedNode = board[startY][startX];
+    if (scanned != 2 && scanned != 4) {
+        fprintf(stderr, "Invalid node when reading from line %" PRIu64 ".\n", lineNum);
+        exit(EXIT_FAILURE);
+    }
+    return updatedNode;
+}
+
+void print_path(FILE *outfile, node *current, node *source) {
+    if (cost(current) < 0) {
+        printf("There is no path from source node (%" PRIu32 ", %" PRIu32 ") and destination node (%" PRIu32 ", %" PRIu32 ".\n", 
+                get_X(source), get_Y(source), get_X(current), get_Y(current));
+    } else if (get_parent(current) == NULL) {
+        printf("X: %" PRIu32 " Y: %" PRIu32 "\n", get_X(current), get_Y(current));
+    } else {
+        print_path(outfile, get_parent(current), source);
+        printf("X: %" PRIu32 " Y: %" PRIu32 "\n", get_X(current), get_Y(current));
+    }
+    return;
 }
