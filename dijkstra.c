@@ -91,13 +91,12 @@ int main(int argc, char **argv) {
     }
     node *next, *current = source;
     update_cost(current, 0); 
-    int64_t weight = 0;
     while (!visited(destination) && current) {
         for (int x = -1; x < 2; x++) {
             for (int y = -1; y < 2; y++) {
                 if (in_range(dimension, get_X(current) + x, get_Y(current) + y)) {
                     next = board[get_Y(current) + y][get_X(current) + x];
-                    weight = get_edge(current, find_position(x, y));
+                    int64_t weight = get_edge(current, find_position(x, y));
                     if (!visited(next) && weight >= 0 && (cost(next) > weight + cost(current) || cost(next) == INF)) {
                         update_cost(next, weight + cost(current));
                         add_parent(next, current);
